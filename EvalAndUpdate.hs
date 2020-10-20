@@ -94,7 +94,7 @@ eval env term = case term of
     let VInt head = eval env (EHead e2) in
     let VList xs = eval env (ETail e2) in
     let VInt rest = eval env (EFoldr op e1 (EList xs)) in
-      (eval env (EPrim op (EInt head) (EInt rest)))
+      eval env (EPrim op (EInt head) (EInt rest))
     
   EFreeze e -> eval env e
 
@@ -128,8 +128,8 @@ evalUpdate env term newValue = case term of
 
   -- U-FIX
   EFix e -> 
-    let (env', EApp e' (EFix _)) = evalUpdate env (EApp e (EFix e)) newValue in
-      (env', EFix e')
+    let (env', (EApp e' _)) = evalUpdate env (EApp e (EFix e)) newValue in
+        (env', EFix e')
 
   -- U-IF-TRUE
   EIf (EBool True) e2 e3 ->
@@ -150,19 +150,19 @@ evalUpdate env term newValue = case term of
   -- U-FREEZE
   EFreeze e -> (env, EFreeze e)
 
-  -- -- U-PLUS-1
+  -- U-PLUS-1 
+  EPrim Add e1 e2 -> 
+    let VInt n' = newValue in
+      let VInt n1 = eval env e1 in
+        let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
+          (env2, (EPrim Add e1 e2'))
+
+  -- -- U-PLUS-2
   -- EPrim Add e1 e2 -> 
   --   let VInt n' = newValue in
-  --     let VInt n1 = eval env e1 in
-  --       let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
-  --         (env2, (EPrim Add e1 e2'))
-
-  -- U-PLUS-2
-  EPrim Add e1 e2 ->
-    let VInt n' = newValue in
-    let VInt n2 = eval env e2 in
-    let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
-      (env1, (EPrim Add e1' e2))
+  --   let VInt n2 = eval env e2 in
+  --   let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
+  --     (env1, (EPrim Add e1' e2))
 
   -- U-SUB-1
   EPrim Sub e1 e2 -> 
@@ -238,6 +238,7 @@ emptyList = VList []
 
 -- merge(E1, E2, E)
 merge :: Env -> Env -> Env -> Env
+merge [] [] [] = []
 merge (v1:vs1) (v2:vs2) (v:vs) = if (v2 /= v) then (v2:(merge vs1 vs2 vs)) else (v1:(merge vs1 vs2 vs))
 
 -- updateList(n,list,new)
@@ -274,7 +275,7 @@ test3 :: Value
 test3 = eval emptyEnv $ EApp fac (EInt 5)
 
 test3' :: Expr
-test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 5)
+test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 3)) (VInt 9)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
@@ -312,7 +313,7 @@ test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 5)
 -- test11 :: (Env, Expr)
 -- test11 = (evalUpdate emptyEnv $ (ELet (EVar 0) (EInt 2) (ELet (EVar 1) (EInt 3) (EPrim Add (EVar 0) (EVar 1))))) (VInt 5)
 
--- (\x y -> x + y) 10 20 "30 -> 50"
+-- -- (\x y -> x + y) 10 20 "30 -> 50"
 -- test12 :: (Env, Expr)
 -- test12 = (evalUpdate emptyEnv $ EApp (EApp (ELam (ELam (EPrim Add (EVar 0) (EVar 1)))) (EInt 10)) (EInt 20)) (VInt 50)
 
