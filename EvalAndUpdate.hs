@@ -31,18 +31,27 @@ data Value
 data PrimOp = Add | Sub | Mul | Lt | Gt | Eq | Le | Ge
   deriving (Show, Eq)
 
-type Env = [Value] 
+data Pattern = Value Value | Expr Expr 
+  deriving (Show, Eq)
+
+type Env = [Pattern] 
 
 eval :: Env -> Expr -> Value
 eval env term = case term of
-  EVar n -> env !! n
+  EVar n -> case (env !! n) of
+    Value v -> v
+    Expr (EFix e) -> eval [] (EFix e)
 
   ELam a -> VClosure a env
   
+  EApp a (EFix b) ->
+    let VClosure c env' = eval env a in
+      eval ((Expr (EFix b)) : env') c
+
   EApp a b -> 
     let VClosure c env' = eval env a in
     let v = eval env b in
-      eval (v : env') c
+      eval ((Value v) : env') c
 
   EFix e -> eval env (EApp e (EFix e))
 
@@ -112,7 +121,7 @@ evalUpdate env term newValue = case term of
 
   -- U-LET
   ELet var e1 e2 -> 
-    let ((v1':env2), e2') = evalUpdate ((eval env e1):env) e2 newValue in
+    let (((Value v1'):env2), e2') = evalUpdate ((Value (eval env e1)):env) e2 newValue in
     let (env1, e1') = evalUpdate env e1 v1' in
     let env' = merge env1 env2 env in
       (env', ELet var e1' e2')
@@ -120,15 +129,18 @@ evalUpdate env term newValue = case term of
   -- U-APP
   EApp e1 e2 ->
     let VClosure ef envf = eval env e1 in
-    let v2 = eval env e2 in
+    let v2 = case e2 of
+              EFix e    -> Expr (EFix e)
+              otherwise -> Value (eval env e2) in
     let (env', ef') = evalUpdate (v2:envf) ef newValue in
     let (env1, e1') = evalUpdate env e1 (VClosure ef' (tail env')) in
-    let (env2, e2') = evalUpdate env e2 (head env') in
-      (merge env1 env2 env, EApp e1' e2')
+      case (head env') of
+        Value v2' -> let (env2, e2') = evalUpdate env e2 v2' in (merge env1 env2 env, EApp e1' e2')
+        Expr e'   -> ([], EApp e1' (EFix e1'))
 
   -- U-FIX
   EFix e -> 
-    let (env', (EApp e' _)) = evalUpdate env (EApp e (EFix e)) newValue in
+    let (env', (EApp _ (EFix e'))) = evalUpdate env (EApp e (EFix e)) newValue in
         (env', EFix e')
 
   -- U-IF-TRUE
@@ -150,19 +162,19 @@ evalUpdate env term newValue = case term of
   -- U-FREEZE
   EFreeze e -> (env, EFreeze e)
 
-  -- U-PLUS-1 
-  EPrim Add e1 e2 -> 
-    let VInt n' = newValue in
-      let VInt n1 = eval env e1 in
-        let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
-          (env2, (EPrim Add e1 e2'))
-
-  -- -- U-PLUS-2
+  -- -- U-PLUS-1 
   -- EPrim Add e1 e2 -> 
   --   let VInt n' = newValue in
-  --   let VInt n2 = eval env e2 in
-  --   let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
-  --     (env1, (EPrim Add e1' e2))
+  --     let VInt n1 = eval env e1 in
+  --       let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
+  --         (env2, (EPrim Add e1 e2'))
+
+  -- U-PLUS-2
+  EPrim Add e1 e2 -> 
+    let VInt n' = newValue in
+    let VInt n2 = eval env e2 in
+    let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
+      (env1, (EPrim Add e1' e2))
 
   -- U-SUB-1
   EPrim Sub e1 e2 -> 
@@ -242,8 +254,8 @@ merge [] [] [] = []
 merge (v1:vs1) (v2:vs2) (v:vs) = if (v2 /= v) then (v2:(merge vs1 vs2 vs)) else (v1:(merge vs1 vs2 vs))
 
 -- updateList(n,list,new)
-updateList :: Int -> [Value] -> Value -> [Value]
-updateList 0 list new = (new : (tail list))
+updateList :: Int -> [Pattern] -> Value -> [Pattern]
+updateList 0 list new = ((Value new) : (tail list))
 updateList n list new = (head(list) : (updateList (n-1) (tail list) new))
 
 addToTail :: Value -> [Value] -> [Value]
@@ -275,7 +287,7 @@ test3 :: Value
 test3 = eval emptyEnv $ EApp fac (EInt 5)
 
 test3' :: Expr
-test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 3)) (VInt 9)
+test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 9)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
@@ -311,7 +323,7 @@ test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 3)) (VInt 9)
 
 -- -- let x = 1 let y = 2 in x+y "3 -> 5"
 -- test11 :: (Env, Expr)
--- test11 = (evalUpdate emptyEnv $ (ELet (EVar 0) (EInt 2) (ELet (EVar 1) (EInt 3) (EPrim Add (EVar 0) (EVar 1))))) (VInt 5)
+-- test11 = (evalUpdate emptyEnv $ (ELet (EVar 0) (EInt 1) (ELet (EVar 1) (EInt 2) (EPrim Add (EVar 0) (EVar 1))))) (VInt 5)
 
 -- -- (\x y -> x + y) 10 20 "30 -> 50"
 -- test12 :: (Env, Expr)
