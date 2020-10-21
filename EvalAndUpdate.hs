@@ -176,6 +176,20 @@ evalUpdate env term newValue = case term of
     let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
       (env1, (EPrim Add e1' e2))
 
+  -- U-MUL-1 
+  EPrim Mul e1 e2 -> 
+    let VInt n' = newValue in
+      let VInt n1 = eval env e1 in
+        let (env2, e2') = evalUpdate env e2  (VInt (n' `div` n1)) in
+          (env2, (EPrim Mul e1 e2'))
+
+  -- -- U-MUL-2
+  -- EPrim Mul e1 e2 -> 
+  --   let VInt n' = newValue in
+  --   let VInt n2 = eval env e2 in
+  --   let (env1, e1') = evalUpdate env e1  (VInt (n' `div` n2)) in
+  --     (env1, (EPrim Mul e1' e2))
+
   -- U-SUB-1
   EPrim Sub e1 e2 -> 
     let VInt n' = newValue in
@@ -278,7 +292,7 @@ fac = EFix (
             ELam (
                 EIf (EPrim Eq (EVar 0) (EInt 1)) 
                 (EInt 1) 
-                (EPrim Add (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
+                (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
             )
         )
     )
@@ -287,7 +301,7 @@ test3 :: Value
 test3 = eval emptyEnv $ EApp fac (EInt 5)
 
 test3' :: Expr
-test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 9)
+test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 6)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
