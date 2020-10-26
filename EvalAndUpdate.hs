@@ -20,6 +20,8 @@ data Expr
   | EFoldr PrimOp Expr Expr
   | EFreeze Expr
   | ETree Tree
+  | EApplyLens Expr Expr
+  | EUpdateApp Expr
   deriving (Show, Eq)
 
 data Value
@@ -33,10 +35,13 @@ data Value
 data Tree = EmptyTree | Node Int Tree Tree
   deriving (Show, Eq)
 
-data PrimOp = Add | Sub | Mul | Lt | Gt | Eq | Le | Ge
+data PrimOp = Add | Sub | Mul | Lt | Gt | Eq | Le | Ge | Diff | Merge
   deriving (Show, Eq)
 
 data Pattern = Value Value | Expr Expr 
+  deriving (Show, Eq)
+
+data DiffOp = Keep | Delete | Insert Value | Update Value
   deriving (Show, Eq)
 
 type Env = [Pattern] 
@@ -280,6 +285,29 @@ updateList n list new = (head(list) : (updateList (n-1) (tail list) new))
 addToTail :: Value -> [Value] -> [Value]
 addToTail a [] = [a]
 addToTail a (x:xs) = x : (addToTail a xs)
+
+diff :: Value -> Value -> (Int, [DiffOp])
+diff (VList v) (VList v') = case v of
+  []     -> (length v', turnTo v')
+  (x:xs) -> if (v' == [])
+    then (length v, replicate (length v) Delete)
+    else let x':xs' = v' in
+            if (x == x') 
+              then diff (VList xs) (VList xs')
+              else compareBefore x' (diff (VList xs) (VList xs')) (diff (VList (x:xs)) (VList xs')) (diff (VList xs) (VList (x':xs')))
+
+turnTo :: [Int] -> [DiffOp]
+turnTo v = case v of
+  []        -> []
+  (x:xs)    -> (Insert (VInt x)) : turnTo xs
+
+compareBefore :: Int -> (Int, [DiffOp]) -> (Int, [DiffOp]) -> (Int, [DiffOp]) -> (Int, [DiffOp])
+compareBefore v' (n1, list1) (n2, list2) (n3, list3) =
+  if (n1 == foldr min maxBound [n1, n2, n3])
+    then (n1+1, (Update (VInt v')):list1)
+    else if (n2 == min n2 n3)
+            then (n2+1, (Insert (VInt v')):list2)
+            else (n3+1, Delete:list3)
 
 -- -- test for eval
 -- -- (\x y -> x + y) 10 20
