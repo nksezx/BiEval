@@ -19,6 +19,7 @@ data Expr
   | EFoldl PrimOp Expr Expr
   | EFoldr PrimOp Expr Expr
   | EFreeze Expr
+  | ETree Tree
   deriving (Show, Eq)
 
 data Value
@@ -26,6 +27,10 @@ data Value
   | VBool Bool
   | VClosure Expr Env
   | VList [Int]
+  | VTree Tree
+  deriving (Show, Eq)
+
+data Tree = EmptyTree | Node Int Tree Tree
   deriving (Show, Eq)
 
 data PrimOp = Add | Sub | Mul | Lt | Gt | Eq | Le | Ge
@@ -285,23 +290,23 @@ addToTail a (x:xs) = x : (addToTail a xs)
 -- test2 :: Value
 -- test2 = eval emptyEnv $ EIf (EPrim Lt (EInt 2) (EInt 3)) (EInt 10) (EInt 20)
 
--- factorial
-fac :: Expr
-fac = EFix (
-        ELam (
-            ELam (
-                EIf (EPrim Eq (EVar 0) (EInt 1)) 
-                (EInt 1) 
-                (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
-            )
-        )
-    )
+-- -- factorial
+-- fac :: Expr
+-- fac = EFix (
+--         ELam (
+--             ELam (
+--                 EIf (EPrim Eq (EVar 0) (EInt 1)) 
+--                 (EInt 1) 
+--                 (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
+--             )
+--         )
+--     )
 
-test3 :: Value
-test3 = eval emptyEnv $ EApp fac (EInt 5)
+-- test3 :: Value
+-- test3 = eval emptyEnv $ EApp fac (EInt 5)
 
-test3' :: Expr
-test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 6)
+-- test3' :: (Env, Expr)
+-- test3' = (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 6)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
@@ -344,17 +349,21 @@ test3' = snd $ (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 6)
 -- test12 = (evalUpdate emptyEnv $ EApp (EApp (ELam (ELam (EPrim Add (EVar 0) (EVar 1)))) (EInt 10)) (EInt 20)) (VInt 50)
 
 -- -- (\x y -> x + y + 1) 10 20 "31 -> 51"
--- test14 :: (Env, Expr)
--- test14 = (evalUpdate emptyEnv $ EApp (EApp (ELam (ELam (EPrim Add (EPrim Add (EVar 0) (EVar 1)) (EInt 1)))) (EInt 10)) (EInt 20)) (VInt 51)
+-- test13 :: (Env, Expr)
+-- test13 = (evalUpdate emptyEnv $ EApp (EApp (ELam (ELam (EPrim Add (EPrim Add (EVar 0) (EVar 1)) (EInt 1)))) (EInt 10)) (EInt 20)) (VInt 51)
 
 -- -- 2 < 3 "True -> False"
--- test13 :: (Env, Expr)
--- test13 = (evalUpdate emptyEnv $ EPrim Lt (EInt 2) (EInt 3)) (VBool False)
+-- test14 :: (Env, Expr)
+-- test14 = (evalUpdate emptyEnv $ EPrim Lt (EInt 2) (EInt 3)) (VBool False)
 
 -- -- (\x -> x + (\y -> y + 1) x) 10 "21 -> 31"
--- test14 :: (Env, Expr)
--- test14 = (evalUpdate emptyEnv $ EApp (ELam (EPrim Add (EVar 0) (EApp (ELam (EPrim Add (EVar 1) (EInt 1))) (EVar 0)))) (EInt 10)) (VInt 31)
+-- test15 :: (Env, Expr)
+-- test15 = (evalUpdate emptyEnv $ EApp (ELam (EPrim Add (EVar 0) (EApp (ELam (EPrim Add (EVar 1) (EInt 1))) (EVar 0)))) (EInt 10)) (VInt 31)
 
 -- -- foldr (+) 0 [1,2,3] "6->5"
--- test15 :: (Env, Expr)
--- test15 = (evalUpdate emptyEnv $ EFoldr Add (EInt 0) (EList [1,2,3])) (VInt 5)
+-- test16 :: (Env, Expr)
+-- test16 = (evalUpdate emptyEnv $ EFoldr Add (EInt 0) (EList [1,2,3])) (VInt 5)
+
+-- 2+3 “5->6”
+test17 :: (Env, Expr)
+test17 = (evalUpdate emptyEnv $ EPrim Add (EFreeze (EInt 2)) (EInt 3)) (VInt 6)
