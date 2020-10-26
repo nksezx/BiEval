@@ -22,6 +22,7 @@ data Expr
   | ETree Tree
   | EApplyLens Expr Expr
   | EUpdateApp Expr
+  | EMap Expr Expr
   deriving (Show, Eq)
 
 data Value
@@ -30,6 +31,7 @@ data Value
   | VClosure Expr Env
   | VList [Int]
   | VTree Tree
+  | VDiff [DiffOp]
   deriving (Show, Eq)
 
 data Tree = EmptyTree | Node Int Tree Tree
@@ -117,27 +119,32 @@ eval env term = case term of
     
   EFreeze e -> eval env e
 
+  EMap f (EList [])     -> VList []
+  EMap f (EList (x:xs)) -> let VInt v = eval env (EApp f (EInt x)) in
+                           let VList vs = eval env (EMap f (EList xs)) in
+                             VList (v:vs)
+
 evalUpdate :: Env -> Expr -> Value -> (Env, Expr)
-evalUpdate env term newValue = case term of
+evalUpdate env term newValue = case (term, newValue) of
   -- U-CONST
-  EInt n  -> let VInt v' = newValue in (env, EInt v')
-  EBool b -> let VBool v' = newValue in (env, EBool v')
+  (EInt n, _)  -> let VInt v' = newValue in (env, EInt v')
+  (EBool b, _) -> let VBool v' = newValue in (env, EBool v')
 
   -- U-FUN
-  ELam e -> let VClosure e' env' = newValue in (env', ELam e')
+  (ELam e, _)  -> let VClosure e' env' = newValue in (env', ELam e')
     
   -- U-VAR
-  EVar n -> (updateList n env newValue, EVar n)
+  (EVar n, _)  -> (updateList n env newValue, EVar n)
 
   -- U-LET
-  ELet var e1 e2 -> 
+  (ELet var e1 e2, _) -> 
     let (((Value v1'):env2), e2') = evalUpdate ((Value (eval env e1)):env) e2 newValue in
     let (env1, e1') = evalUpdate env e1 v1' in
     let env' = merge env1 env2 env in
       (env', ELet var e1' e2')
 
   -- U-APP
-  EApp e1 e2 ->
+  (EApp e1 e2, _) ->
     let VClosure ef envf = eval env e1 in
     let v2 = case e2 of
               EFix e    -> Expr (EFix e)
@@ -149,73 +156,73 @@ evalUpdate env term newValue = case term of
         Expr e'   -> ([], EApp e1' (EFix e1'))
 
   -- U-FIX
-  EFix e -> 
+  (EFix e, _) -> 
     let (env', (EApp _ (EFix e'))) = evalUpdate env (EApp e (EFix e)) newValue in
         (env', EFix e')
 
   -- U-IF-TRUE
-  EIf (EBool True) e2 e3 ->
+  (EIf (EBool True) e2 e3, _) ->
     let (env2, e2') = evalUpdate env e2 newValue in
       (merge env env2 env, EIf (EBool True) e2' e3)
 
   -- U-IF-FALSE
-  EIf (EBool False) e2 e3 ->
+  (EIf (EBool False) e2 e3, _) ->
     let (env3, e3') = evalUpdate env e3 newValue in
       (merge env env3 env, EIf (EBool False) e2 e3')
 
   -- U-IF
-  EIf e1 e2 e3 ->
+  (EIf e1 e2 e3, _) ->
     let VBool v = eval env e1 in
       let (env', EIf _ e2' e3') = evalUpdate env (EIf (EBool v) e2 e3) newValue in
         (env', EIf e1 e2' e3')
 
   -- U-FREEZE
-  EFreeze e -> (env, EFreeze e)
+  (EFreeze e, _) -> (env, EFreeze e)
 
   -- -- U-PLUS-1 
-  -- EPrim Add e1 e2 -> 
+  -- (EPrim Add e1 e2, _) -> 
   --   let VInt n' = newValue in
   --     let VInt n1 = eval env e1 in
   --       let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
   --         (env2, (EPrim Add e1 e2'))
 
   -- U-PLUS-2
-  EPrim Add e1 e2 -> 
+  (EPrim Add e1 e2, _) -> 
     let VInt n' = newValue in
     let VInt n2 = eval env e2 in
     let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
       (env1, (EPrim Add e1' e2))
 
   -- U-MUL-1 
-  EPrim Mul e1 e2 -> 
+  (EPrim Mul e1 e2, _) -> 
     let VInt n' = newValue in
       let VInt n1 = eval env e1 in
         let (env2, e2') = evalUpdate env e2  (VInt (n' `div` n1)) in
           (env2, (EPrim Mul e1 e2'))
 
   -- -- U-MUL-2
-  -- EPrim Mul e1 e2 -> 
+  -- (EPrim Mul e1 e2, _) -> 
   --   let VInt n' = newValue in
   --   let VInt n2 = eval env e2 in
   --   let (env1, e1') = evalUpdate env e1  (VInt (n' `div` n2)) in
   --     (env1, (EPrim Mul e1' e2))
 
   -- U-SUB-1
-  EPrim Sub e1 e2 -> 
+  (EPrim Sub e1 e2, _) -> 
     let VInt n' = newValue in
       let VInt n1 = eval env e1 in
         let (env2, e2') = evalUpdate env e2  (VInt (n1 - n')) in
           (env2, (EPrim Sub e1 e2'))
 
   -- -- U-SUB-2
-  -- EPrim Sub e1 e2 ->
+  -- (EPrim Sub e1 e2, _) ->
   --   let VInt n' = newValue in
   --   let VInt n2 = eval env e2 in
   --   let (env1, e1') = evalUpdate env e1  (VInt (n2 - n')) in
   --     (env1, (EPrim Sub e1' e2))
 
   -- U-LT
-  EPrim Lt e1 e2 ->
+  (EPrim Lt e1 e2, _) ->
     let VBool b' = newValue in
     let VBool b = eval env (EPrim Lt e1 e2) in
       if (b' == not b)
@@ -223,15 +230,29 @@ evalUpdate env term newValue = case term of
         else (env, EPrim Lt e1 e2)
 
   -- U-Foldr // not defined for other primitive operations
-  EFoldr Add e1 (EList []) -> 
+  (EFoldr Add e1 (EList []), _) -> 
     let (env', e1') = evalUpdate env e1 newValue in
       (env', EFoldr Add e1' (EList []))
-  EFoldr Add e1 e2 ->
+  (EFoldr Add e1 e2, _) ->
     let VInt head = eval env (EHead e2) in
     let VList xs = eval env (ETail e2) in
     let (env', EPrim Add (EInt head') (EFoldr Add e1' (EList xs'))) = evalUpdate env (EPrim Add (EInt head) (EFoldr Add e1 (EList xs))) newValue in
       (env', EFoldr Add e1' (EList (head':xs')))
 
+  -- U-LIST
+  (e, VDiff ((Insert (VInt v')):delta)) -> let (env', EList xs') = evalUpdate env e (VDiff delta) in (env', EList (v':xs'))
+  (EList [], VDiff [])         -> (env, EList [])
+  (EList (x:xs), VDiff _)     -> case newValue of
+    VDiff (Keep:delta)        -> let (env', EList xs') = evalUpdate env (EList xs) (VDiff delta) in (env', EList (x:xs'))
+    VDiff (Delete:delta)      -> let (env', EList xs') = evalUpdate env (EList xs) (VDiff delta) in (env', EList xs')
+    VDiff ((Update v'):delta) -> let (env1, (EInt x')) = evalUpdate env (EInt x) v' in
+                                 let (env2, (EList xs')) = evalUpdate env (EList xs) (VDiff delta) in
+                                 let env' = merge env1 env2 env in
+                                    (env', EList (x':xs'))
+  (EList e, _) -> let v = eval env (EList e) in
+                   let delta = snd $ diff v newValue in evalUpdate env (EList e) (VDiff delta)
+
+  -- TODO: U-MAP
 
 add :: Value -> Value -> Value
 add (VInt a) (VInt b) = VInt (a + b)
@@ -293,7 +314,7 @@ diff (VList v) (VList v') = case v of
     then (length v, replicate (length v) Delete)
     else let x':xs' = v' in
             if (x == x') 
-              then diff (VList xs) (VList xs')
+              then let (n, opList) = diff (VList xs) (VList xs') in (n, Keep:opList)
               else compareBefore x' (diff (VList xs) (VList xs')) (diff (VList (x:xs)) (VList xs')) (diff (VList xs) (VList (x':xs')))
 
 turnTo :: [Int] -> [DiffOp]
@@ -392,6 +413,14 @@ compareBefore v' (n1, list1) (n2, list2) (n3, list3) =
 -- test16 :: (Env, Expr)
 -- test16 = (evalUpdate emptyEnv $ EFoldr Add (EInt 0) (EList [1,2,3])) (VInt 5)
 
--- 2+3 “5->6”
-test17 :: (Env, Expr)
-test17 = (evalUpdate emptyEnv $ EPrim Add (EFreeze (EInt 2)) (EInt 3)) (VInt 6)
+-- -- 2+3 “5->6”
+-- test17 :: (Env, Expr)
+-- test17 = (evalUpdate emptyEnv $ EPrim Add (EFreeze (EInt 2)) (EInt 3)) (VInt 6)
+
+-- -- [1,2,3] "[1,2,3] -> [0,1,2,0,3,4]"
+-- test18 :: (Env, Expr)
+-- test18 = (evalUpdate emptyEnv $ EList [1,2,3]) (VList [0,1,2,0,3,4])
+
+-- -- map (+5) [1,2,3,3,2,1]
+-- test19 :: Value
+-- test19 = eval emptyEnv $ EMap (ELam (EPrim Add (EInt 5) (EVar 0))) (EList [1,2,3,3,2,1])
