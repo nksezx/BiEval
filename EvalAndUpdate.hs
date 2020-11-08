@@ -46,7 +46,7 @@ data Pattern = Value Value | Expr Expr
 data DiffOp = Keep | Delete | Insert Value | Update Value
   deriving (Show, Eq)
 
-type Env = [Pattern] 
+type Env = [Pattern]
 
 eval :: Env -> Expr -> Value
 eval env term = case term of
@@ -239,20 +239,18 @@ evalUpdate env term newValue = case (term, newValue) of
     let (env', EPrim Add (EInt head') (EFoldr Add e1' (EList xs'))) = evalUpdate env (EPrim Add (EInt head) (EFoldr Add e1 (EList xs))) newValue in
       (env', EFoldr Add e1' (EList (head':xs')))
 
-  -- U-LIST
+  -- TODO: U-LIST
   (e, VDiff ((Insert (VInt v')):delta)) -> let (env', EList xs') = evalUpdate env e (VDiff delta) in (env', EList (v':xs'))
-  (EList [], VDiff [])         -> (env, EList [])
-  (EList (x:xs), VDiff _)     -> case newValue of
+  (EList [], VDiff [])        -> (env, EList [])
+  (EList (x:xs), VDiff _)      -> case newValue of
     VDiff (Keep:delta)        -> let (env', EList xs') = evalUpdate env (EList xs) (VDiff delta) in (env', EList (x:xs'))
     VDiff (Delete:delta)      -> let (env', EList xs') = evalUpdate env (EList xs) (VDiff delta) in (env', EList xs')
     VDiff ((Update v'):delta) -> let (env1, (EInt x')) = evalUpdate env (EInt x) v' in
                                  let (env2, (EList xs')) = evalUpdate env (EList xs) (VDiff delta) in
                                  let env' = merge env1 env2 env in
                                     (env', EList (x':xs'))
-  (EList e, _) -> let v = eval env (EList e) in
-                   let delta = snd $ diff v newValue in evalUpdate env (EList e) (VDiff delta)
-
-  -- TODO: U-MAP
+  (EList e, VList _) -> let v = eval env (EList e) in
+                        let delta = snd $ diff v newValue in evalUpdate env (EList e) (VDiff delta)
 
 add :: Value -> Value -> Value
 add (VInt a) (VInt b) = VInt (a + b)
@@ -355,7 +353,7 @@ compareBefore v' (n1, list1) (n2, list2) (n3, list3) =
 -- test3 = eval emptyEnv $ EApp fac (EInt 5)
 
 -- test3' :: (Env, Expr)
--- test3' = (evalUpdate emptyEnv $ EApp fac (EInt 2)) (VInt 6)
+-- test3' = (evalUpdate emptyEnv $ EApp fac (EInt 3)) (VInt 12)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
