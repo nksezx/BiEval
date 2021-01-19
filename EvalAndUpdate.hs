@@ -22,7 +22,6 @@ data Expr
   | ETree Tree
   | EApplyLens Expr Expr
   | EUpdateApp Expr
-  | EMap Expr Expr
   deriving (Show, Eq)
 
 data Value
@@ -119,14 +118,10 @@ eval env term = case term of
     
   EFreeze e -> eval env e
 
-  EMap f (EList [])     -> VList []
-  EMap f (EList (x:xs)) -> let VInt v = eval env (EApp f (EInt x)) in
-                           let VList vs = eval env (EMap f (EList xs)) in
-                             VList (v:vs)
-
 evalUpdate :: Env -> Expr -> Value -> (Env, Expr)
--- trace ("term   " ++ show term ++ "\nenv   " ++ show env ++ "\nnewValue   " ++ show newValue++"\n")
-evalUpdate env term newValue = (case (term, newValue) of
+evalUpdate env term newValue = 
+  trace ("term   " ++ show term ++ "\nenv   " ++ show env ++ "\nnewValue   " ++ show newValue++"\n")
+  (case (term, newValue) of
   -- U-CONST
   (EInt n, _)  -> let VInt v' = newValue in (env, EInt v')
   (EBool b, _) -> let VBool v' = newValue in (env, EBool v')
@@ -142,6 +137,7 @@ evalUpdate env term newValue = (case (term, newValue) of
     let (((Value v1'):env2), e2') = evalUpdate ((Value (eval env e1)):env) e2 newValue in
     let (env1, e1') = evalUpdate env e1 v1' in
     let env' = merge env1 env2 env in
+      trace ("\nenv1: " ++ show env1 ++ "\nenv2: " ++ show env2)
       (env', ELet var e1' e2')
 
   -- U-APP
@@ -185,19 +181,19 @@ evalUpdate env term newValue = (case (term, newValue) of
   -- U-FREEZE
   (EFreeze e, _) -> (env, EFreeze e)
 
-  -- -- U-PLUS-1 
-  -- (EPrim Add e1 e2, _) -> 
-  --   let VInt n' = newValue in
-  --     let VInt n1 = eval env e1 in
-  --       let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
-  --         (env2, (EPrim Add e1 e2'))
-
-  -- U-PLUS-2
+  -- U-PLUS-1 
   (EPrim Add e1 e2, _) -> 
     let VInt n' = newValue in
-    let VInt n2 = eval env e2 in
-    let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
-      (env1, (EPrim Add e1' e2))
+      let VInt n1 = eval env e1 in
+        let (env2, e2') = evalUpdate env e2  (VInt (n' - n1)) in
+          (env2, (EPrim Add e1 e2'))
+
+  -- -- U-PLUS-2
+  -- (EPrim Add e1 e2, _) -> 
+  --   let VInt n' = newValue in
+  --   let VInt n2 = eval env e2 in
+  --   let (env1, e1') = evalUpdate env e1  (VInt (n' - n2)) in
+  --     (env1, (EPrim Add e1' e2))
 
   -- U-MUL-1 
   (EPrim Mul e1 e2, _) -> 
@@ -252,7 +248,7 @@ evalUpdate env term newValue = (case (term, newValue) of
       (merge env1 env2 env, ECons e1' e2')
 
   (EList [], VList v) ->
-    (env, EList v)
+    trace (show v) (env, EList v)
 
   -- TODO: U-LIST
   -- (e, VDiff ((Insert (VInt v')):delta)) -> let (env', EList xs') = evalUpdate env e (VDiff delta) in (env', EList (v':xs'))
@@ -353,23 +349,23 @@ compareBefore v' (n1, list1) (n2, list2) (n3, list3) =
 -- test2 :: Value
 -- test2 = eval emptyEnv $ EIf (EPrim Lt (EInt 2) (EInt 3)) (EInt 10) (EInt 20)
 
--- factorial
-fac :: Expr
-fac = EFix (
-        ELam (
-            ELam (
-                EIf (EPrim Eq (EVar 0) (EInt 1)) 
-                (EInt 1) 
-                (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
-            )
-        )
-    )
+-- -- factorial
+-- fac :: Expr
+-- fac = EFix (
+--         ELam (
+--             ELam (
+--                 EIf (EPrim Eq (EVar 0) (EInt 1)) 
+--                 (EInt 1) 
+--                 (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1)))))
+--             )
+--         )
+--     )
 
-test3 :: Value
-test3 = eval emptyEnv $ EApp fac (EInt 5)
+-- test3 :: Value
+-- test3 = eval emptyEnv $ EApp fac (EInt 5)
 
-test3' :: (Env, Expr)
-test3' = (evalUpdate emptyEnv $ EApp fac (EInt 4)) (VInt 48)
+-- test3' :: (Env, Expr)
+-- test3' = (evalUpdate emptyEnv $ EApp fac (EInt 4)) (VInt 48)
 
 -- -- let x = 1 let y = 2 in x+y
 -- test4 :: Value
@@ -435,9 +431,22 @@ test3' = (evalUpdate emptyEnv $ EApp fac (EInt 4)) (VInt 48)
 -- test18 :: (Env, Expr)
 -- test18 = (evalUpdate emptyEnv $ EList [1,2,3]) (VList [0,1,2,0,3,4])
 
--- -- map (+5) [1,2,3,3,2,1]
+-- map_ :: Expr
+-- map_ = EFix (
+--         ELam (
+--           ELam (
+--             ELam (
+--               EIf (EPrim Eq (EVar 0) (EList []))
+--               (EList [])
+--               (ECons (EApp (EVar 1) (EHead (EVar 0))) (EApp (EApp (EVar 2) (EVar 1)) (ETail (EVar 0))))
+--             )
+--           )
+--         )
+--       )
+
+-- -- map (+1) [0,1,2]
 -- test19 :: Value
--- test19 = eval emptyEnv $ EMap (ELam (EPrim Add (EInt 5) (EVar 0))) (EList [1,2,3,3,2,1])
+-- test19 = eval emptyEnv $ EApp (EApp map_ (ELam (EPrim Add (EInt 1) (EVar 0)))) (EList [0,1,2])
 
 -- fib
 -- test20 :: Value
@@ -451,21 +460,67 @@ test3' = (evalUpdate emptyEnv $ EApp fac (EInt 4)) (VInt 48)
 -- test21 = eval emptyEnv $ EApp (EFix (ELam (ELam (EIf (EPrim Eq (EVar 0) (EInt 1)) (EInt 1) (EPrim Mul (EVar 0) (EApp (EVar 1) (EFreeze (EPrim Sub (EVar 0) (EInt 1))))))))) (EInt 8)
 
 -- range 1 3 = [1,2,3]
-range :: Expr
-range = EFix (
-        ELam (
-            ELam (
-                ELam (
-                  EIf (EPrim Ge (EVar 1) (EPrim Add (EVar 0) (EInt 1))) 
-                  (EList []) 
-                  (ECons (EVar 1) (EApp (EApp (EVar 2) (EPrim Add (EVar 1) (EInt 1))) (EVar 0)))
-                )
-            )
-        )
-    )
+-- range :: Expr
+-- range = EFix (
+--         ELam (
+--             ELam (
+--                 ELam (
+--                   EIf (EPrim Ge (EVar 1) (EPrim Add (EVar 0) (EInt 1))) 
+--                   (EList []) 
+--                   (ECons (EVar 1) (EApp (EApp (EVar 2) (EPrim Add (EVar 1) (EInt 1))) (EVar 0)))
+--                 )
+--             )
+--         )
+--     )
 
-test22 :: Value
-test22 = eval emptyEnv $ EApp (EApp range (EInt 0)) (EInt 5)
+-- test22 :: Value
+-- test22 = eval emptyEnv $ EApp (EApp range (EInt 0)) (EInt 5)
 
-test22' :: (Env, Expr)
-test22' = (evalUpdate emptyEnv $ EApp (EApp range (EInt 1)) (EInt 5)) (VList [0,1,2,3,4,5])
+-- test22' :: (Env, Expr)
+-- test22' = (evalUpdate emptyEnv $ EApp (EApp range (EInt 2)) (EInt 3)) (VList [2,3,4])
+
+-- max i j
+-- max_ :: Expr
+-- max_ = ELam (
+--         ELam (
+--           EIf (EPrim Ge (EVar 1) (EVar 0))
+--           (EVar 1)
+--           (EVar 0)
+--         )
+--       )
+
+-- test23 :: Value
+-- test23 = eval emptyEnv $ EApp (EApp max_ (EInt 2)) (EInt 3)
+
+-- test23' :: (Env, Expr)
+-- test23' = (evalUpdate emptyEnv $ EApp (EApp max_ (EInt 2)) (EInt 3)) (VInt 1)
+
+-- reverse_ :: Expr
+-- reverse_ = EFix (
+--             ELam (
+--               ELam (
+--                 ELam (
+--                   EIf (EPrim (Eq) (EVar 0) (EList []))
+--                   (EVar 1)
+--                   (EApp (EApp (EVar 2) (ECons (EHead (EVar 0)) (EVar 1))) (ETail (EVar 0)))
+--                 )
+--               )
+--             )
+--           )
+-- test24 :: Value
+-- test24 = eval emptyEnv $ EApp (EApp reverse_ (EList [])) (EList [1,2,3])
+
+-- test24' :: (Env, Expr)
+-- test24' = (evalUpdate emptyEnv $ EApp (EApp reverse_ (EList [])) (EList [1,2,3])) (VList [4,3,2,1])
+
+test23 :: Value 
+test23 = eval emptyEnv $ ELet (EVar 0) (EInt 1) (ELet (EVar 1) (EPrim Mul (EInt 2) (EVar 0)) (EPrim Add (EVar 1) (EVar 0)))
+
+test23' :: (Env, Expr)
+test23' = (evalUpdate emptyEnv $ ELet (EVar 0) (EInt 1) (ELet (EVar 1) (EPrim Mul (EInt 2) (EVar 0)) (EPrim Add (EVar 1) (EVar 0)))) (VInt 6)
+
+test25 :: Value
+test25 = eval [Value (VInt 1)] $ EApp (ELam (EPrim Add (EVar 1) (EVar 0))) (EPrim Mul (EInt 2) (EVar 0))
+
+test25' :: (Env, Expr)
+test25' = (evalUpdate [Value (VInt 1)] $ EApp (ELam (EPrim Add (EVar 1) (EVar 0))) (EPrim Mul (EInt 2) (EVar 0))) (VInt 5)
