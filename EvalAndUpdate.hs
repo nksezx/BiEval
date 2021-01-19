@@ -250,6 +250,19 @@ evalUpdate env term newValue =
   (EList [], VList v) ->
     trace (show v) (env, EList v)
 
+  (EList _, VList v) ->
+    (env, EList v)
+
+  (EHead e, VInt v) ->
+    let VList l = eval env e in
+    let newList = v:(tail l) in
+      evalUpdate env e (VList newList)
+
+  (ETail e, VList v) ->
+    let VList l = eval env e in
+    let newList = (head l):v in
+      evalUpdate env e (VList newList)
+
   -- TODO: U-LIST
   -- (e, VDiff ((Insert (VInt v')):delta)) -> let (env', EList xs') = evalUpdate env e (VDiff delta) in (env', EList (v':xs'))
   -- (EList [], VDiff [])        -> (env, EList [])
@@ -431,22 +444,25 @@ compareBefore v' (n1, list1) (n2, list2) (n3, list3) =
 -- test18 :: (Env, Expr)
 -- test18 = (evalUpdate emptyEnv $ EList [1,2,3]) (VList [0,1,2,0,3,4])
 
--- map_ :: Expr
--- map_ = EFix (
---         ELam (
---           ELam (
---             ELam (
---               EIf (EPrim Eq (EVar 0) (EList []))
---               (EList [])
---               (ECons (EApp (EVar 1) (EHead (EVar 0))) (EApp (EApp (EVar 2) (EVar 1)) (ETail (EVar 0))))
---             )
---           )
---         )
---       )
+map_ :: Expr
+map_ = EFix (
+        ELam (
+          ELam (
+            ELam (
+              EIf (EPrim Eq (EVar 0) (EList []))
+              (EList [])
+              (ECons (EApp (EVar 1) (EHead (EVar 0))) (EApp (EApp (EVar 2) (EVar 1)) (ETail (EVar 0))))
+            )
+          )
+        )
+      )
 
--- -- map (+1) [0,1,2]
--- test19 :: Value
--- test19 = eval emptyEnv $ EApp (EApp map_ (ELam (EPrim Add (EInt 1) (EVar 0)))) (EList [0,1,2])
+-- map (+1) [0,1,2]
+test19 :: Value
+test19 = eval emptyEnv $ EApp (EApp map_ (ELam (EPrim Add (EInt 1) (EVar 0)))) (EList [0,1,2])
+
+test19' :: (Env, Expr)
+test19' = (evalUpdate emptyEnv $ EApp (EApp map_ (ELam (EPrim Add (EInt 1) (EVar 0)))) (EList [1,2,3])) (VList [5,4,4])
 
 -- fib
 -- test20 :: Value
